@@ -4,5 +4,5 @@ Set of R function for prediction of differentially active transcription factors.
 
 # USAGE
 1. source file predictActiveTFs.R into the R workspace.
-2. run the following function: results=predictActiveTFs(#grn, exprTable, nRand, isGlobal, nThreads), with all input variables properly set.
+2. run the following function: results=predictActiveTFs(# grn, exprTable, nRand, isGlobal, nThreads), with all input variables properly set.
 3. grn - 
