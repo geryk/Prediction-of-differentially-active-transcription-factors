@@ -454,11 +454,14 @@ predictActiveTFs<-function(grn, exprTable, nRand, isGlobal, nThreads)
   indexesAll=seq(1:nrow(validationTable_regEffect))
   
   ## NOT PARALELISED VERSION --FOR DEBUGING
-  #validationTable_regEffect_new=computeStat(indexesAll, validationTable_regEffect, exprTable, L_tg_pos, L_tg_neg, nRand)
+  #validationTable_regEffect=computeStat(indexesAll, validationTable_regEffect, exprTable, L_tg_pos, L_tg_neg, nRand)
   
-  validationTable_regEffect_new=parSapply(cl,indexesAll,computeStat, validationTable_regEffect, exprTable, L_tg_pos, L_tg_neg, nRand)
-  validationTable_regEffect_new=t(validationTable_regEffect_new)
+  validationTable_regEffect=parSapply(cl,indexesAll,computeStat, validationTable_regEffect, exprTable, L_tg_pos, L_tg_neg, nRand)
+  validationTable_regEffect=t(validationTable_regEffect)
   stopCluster(cl)
   
-  return(validationTable_regEffect_new)
+  ## pvalues correction
+  validationTable_regEffect=correctPvals(validationTable_regEffect, isGlobal=isGlobal)
+  
+  return(validationTable_regEffect)
 } 
