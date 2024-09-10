@@ -4,14 +4,22 @@ Set of R function for prediction of differentially active transcription factors 
 
 # USAGE
 1. source file predictActiveTFs.R into the R workspace.
-2. run the following function: results=predictActiveTFs(**grn**, **exprTable**, **nRand**, **isGlobal**, **nThreads**), with all input variables properly set.
+   
+2. optionally load inputs.RData into the R workspace. The data contains  gene regulatory network (grn_Biochimie_regEffect) and 2 topTables (topTable_paired_proteomics and topTable_rnaSeq_RIN7)
+   
+3. run the following function: results=predictActiveTFs(**grn**, **exprTable**, **nRand**, **isGlobal**, **nThreads**), with all input variables properly set.
+
 **grn** - gene regulatory network in the form of matrix or data.frame, where 1. st column contain names of TFs, 2. st column contain theirs TGs  and
-   3. st column contain "Activation" if TF increases expression of the TG from the same row or "Inhibition" if the TF decreases its expression.
+3. st column contain "Activation" if TF increases expression of the TG from the same row or "Inhibition" if the TF decreases its expression.
+
 **exprTable** - 2 possibilities: a) top table produced by limma package, where 1.st column, (named "gene") contains genes and 2.st column (named "logFC") contains logFC values
 OR b) expression matrix with normalised expression values, where rows represents genes and columns represents samples. The row names contain gene names and column names contains sample names.
 It is expected that expression matrix contains exclusively paired samples, corresponding to two conditions. 
 One sample from each pair must start with "N" and the other one with "T", the remaining part of sample name is optional but must be same for paired samples.
 For example: T01 and N01 represents correct names for paired samples. 
+
 **nRand** - number of permutations to obtain random estimate of TF activities (ATF).
+
 **isGlobal** - TRUE if **exprTable** is top table, FASLE otherwise
+
 **nThreads** - number of threads for parallelisation
