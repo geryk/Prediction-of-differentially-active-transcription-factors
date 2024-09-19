@@ -22,13 +22,26 @@ correctPvals<-function(validationTable, isGlobal=T)
 {
   library(qvalue)  
   
-  getCorrP<-function(corrPval, L)
+  get2tailedP<-function(p1,p2)
   {
-   corrPval$pval_fract_BH[L]=p.adjust(validationTable$pval_fract[L], method="BH")
-   corrPval$pval_mean_consist_BH[L]=p.adjust(validationTable$pval_mean_consist[L], method="BH")
-   corrPval$pval_mean_inconsist_BH[L]=p.adjust(validationTable$pval_mean_inconsist[L], method="BH")
-   corrPval$pval_meanRatio_BH[L]=p.adjust(validationTable$pval_meanRatio[L], method="BH")
-   corrPval$pval_mean_consist_inconsist_q[L]=qvalue(corrPval$pval_mean_consist_inconsist[L])$qvalues
+   twoTiledP=2*pmin(validationTable[[p1]], validationTable[[p2]])
+   twoTiledP[twoTiledP>1]=1
+   return(twoTiledP)
+  }
+      
+  getCorrP<-function(corrPval, Lsample)
+  {
+   L=Lsample & (!is.na(validationTable$pval_fractConsist)) 
+   corrPval$pval_fract_consist_q[L]=qvalue(validationTable$pval_fractConsist[L])$qvalues
+   L=Lsample & (!is.na(validationTable$pval_fractInconsist)) 
+   corrPval$pval_fract_inconsist_q[L]=qvalue(validationTable$pval_fractInconsist[L])$qvalues
+   
+   L=Lsample & (!is.na(corrPval$pval_consist_inconsist)) 
+   corrPval$pval_consist_inconsist_q[L]=qvalue(corrPval$pval_consist_inconsist[L])$qvalues
+   L=Lsample & (!is.na(corrPval$pval_mixed)) 
+   corrPval$pval_mixed_q[L]=qvalue(corrPval$pval_mixed[L])$qvalues
+   L=Lsample & (!is.na(corrPval$pval_diffMean))
+   corrPval$pval_diffMean_q[L]=qvalue(corrPval$pval_diffMean[L])$qvalues
    return(corrPval)
   }
       
@@ -41,15 +54,17 @@ correctPvals<-function(validationTable, isGlobal=T)
   nRows=nrow(validationTable)
   nCols=ncol(validationTable)
   vect=numeric(nRows)
-  corrPval=data.frame("pval_fract_BH"=vect,
-                      "pval_mean_consist_BH"=vect,
-                      "pval_mean_inconsist_BH"=vect,
-                      "pval_meanRatio_BH"=vect,
-                      "pval_mean_consist_inconsist"=vect,
-                      "pval_mean_consist_inconsist_q"=vect)
-  
-  corrPval$pval_mean_consist_inconsist=2*pmin(validationTable$pval_mean_consist, validationTable$pval_mean_inconsist)
-  corrPval$pval_mean_consist_inconsist[corrPval$pval_mean_consist_inconsist>1]=1
+  corrPval=data.frame("pval_fract_consist_q"=vect,
+                      "pval_fract_inconsist_q"=vect,
+                      "pval_consist_inconsist"=vect,
+                      "pval_consist_inconsist_q"=vect,
+                      "pval_mixed"=vect,
+                      "pval_mixed_q"=vect,
+                      "pval_diffMean"=vect,
+                      "pval_diffMean_q"=vect)
+  corrPval$pval_consist_inconsist=get2tailedP("pval_consist_inconsist_higher","pval_consist_inconsist_lower")
+  corrPval$pval_mixed=get2tailedP("pval_mixed_higher","pval_mixed_lower")
+  corrPval$pval_diffMean=get2tailedP("pval_diffMean_higher","pval_diffMean_lower")
   
   if (isGlobal==F)
      {
@@ -62,8 +77,8 @@ correctPvals<-function(validationTable, isGlobal=T)
      }
   else
      {
-      Ltrue=rep(T,nRows)
-      corrPval=getCorrP(corrPval, Ltrue)
+      L_sample=rep(T,nRows)
+      corrPval=getCorrP(corrPval, L_sample)
      }
   
   validationTable=cbind(validationTable, corrPval)
@@ -91,7 +106,7 @@ getMutTable_genesOnly<-function(TFs_unique, samples_T_unique)
   return(mutTable_genesOnly)
 }
 
-getStatistics<-function(diffExpr_pos, diffExpr_neg, isConsist)
+getStatistics<-function(diffExpr_pos, diffExpr_neg)
 {
   nExprTargets_pos=sum(!is.na(diffExpr_pos))
   nExprTargets_neg=sum(!is.na(diffExpr_neg))
@@ -99,90 +114,70 @@ getStatistics<-function(diffExpr_pos, diffExpr_neg, isConsist)
   
   ## statistics for pvalue computation 
   if (nExprTargets>0)
-  {
-    L_pos_pos=diffExpr_pos>0 # positive TGs with positive expression difference
-    L_neg_neg=diffExpr_neg<0 # negative TGs with negative expression difference
-    L_pos_pos[is.na(L_pos_pos)]=F
-    L_neg_neg[is.na(L_neg_neg)]=F
-    
-    L_pos_neg=diffExpr_pos<0 # positive TGs with negative expression difference
-    L_neg_pos=diffExpr_neg>0 # negative TGS with positive expression difference
-    L_pos_neg[is.na(L_pos_neg)]=F
-    L_neg_pos[is.na(L_neg_pos)]=F
-    
-    Pp=diffExpr_pos[L_pos_pos]
-    Pn=diffExpr_pos[L_pos_neg]
-    Nn=diffExpr_neg[L_neg_neg]
-    Np=diffExpr_neg[L_neg_pos]
-    
-    meanConsist=mean(c(-Nn,Pp))
-    meanNotConsist=mean(c(-Pn,Np))
-    
-    if (length(meanConsist)==0 | sum(is.na(meanConsist)==F)==0)
     {
-      meanConsist=0
-    }
-    if (length(meanNotConsist)==0 | sum(is.na(meanNotConsist)==F)==0)
-    {
-      meanNotConsist=0
-    }
+     L_pos_pos=diffExpr_pos>0 # positive TGs with positive expression difference
+     L_neg_neg=diffExpr_neg<0 # negative TGs with negative expression difference
+     L_pos_pos[is.na(L_pos_pos)]=F
+     L_neg_neg[is.na(L_neg_neg)]=F
     
-    if (isConsist==T)
-    {
-      nConsist_pos=sum(L_pos_pos)
-      nConsist_neg=sum(L_neg_neg)
-      genes_posT_pos=names(diffExpr_pos)[L_pos_pos]
-      genes_negT_neg=names(diffExpr_neg)[L_neg_neg]
-      genes_posT_neg=names(diffExpr_pos)[L_pos_neg]
-      genes_negT_pos=names(diffExpr_neg)[L_neg_pos]
-      #sumNegDiff=sum((-1*diffExpr_neg),na.rm=T)
-      #sumPosDiff=sum(diffExpr_pos, na.rm=T)
+     L_pos_neg=diffExpr_pos<0 # positive TGs with negative expression difference
+     L_neg_pos=diffExpr_neg>0 # negative TGS with positive expression difference
+     L_pos_neg[is.na(L_pos_neg)]=F
+     L_neg_pos[is.na(L_neg_pos)]=F
+     
+     nConsist_pos=sum(L_pos_pos)
+     nConsist_neg=sum(L_neg_neg)
+     nInconsist_pos=sum(L_pos_neg)
+     nInconsist_neg=sum(L_neg_pos)
+    
+     Pp=diffExpr_pos[L_pos_pos] # expression values of positive TGs with positive expression difference
+     Pn=diffExpr_pos[L_pos_neg] # expression values of positive TGs with negative expression difference
+     Nn=diffExpr_neg[L_neg_neg] # expression values of negative TGs with negative expression difference
+     Np=diffExpr_neg[L_neg_pos] # expression values of negative TGs with positive expression difference
+    
+     meanConsist=mean(c(-Nn,Pp))
+     meanNotConsist=mean(c(-Pn,Np))
+     if (length(meanConsist)==0 | sum(is.na(meanConsist)==F)==0)
+        {
+         meanConsist=0
+        }
+     if (length(meanNotConsist)==0 | sum(is.na(meanNotConsist)==F)==0)
+        {
+         meanNotConsist=0
+        }
+   
+     genes_posT_pos=names(diffExpr_pos)[L_pos_pos]
+     genes_negT_neg=names(diffExpr_neg)[L_neg_neg]
+     genes_posT_neg=names(diffExpr_pos)[L_pos_neg]
+     genes_negT_pos=names(diffExpr_neg)[L_neg_pos]
       
-      #sumDiff_pos=sum(c(Pp,Pn))
-      #sumDiff_neg=sum(c(-Nn,-Np))
+     sumDiff_posUp_negDown=sum(c(-Nn,-Np,Pp,Pn)) ## consist scenario...
+     sumDiff_posDown_negUp=-sumDiff_posUp_negDown ## inconsist scenario... =sum(c(Nn,Np,-Pp,-Pn))
+     sumDiff_posUp_negUp=sum(c(Nn,Np,Pp,Pn)) ## consistent effect on positive tgs and inconsistent effect on negative tgs 
+     sumDiff_posDown_negDown=-sumDiff_posUp_negUp ## inconsistent effect on positive tgs and consistent effect on negative tgs... =sum(c(-Nn,-Np,-Pp,-Pn))
       
-      sumDiff_posUp_negDown=sum(c(-Nn,-Np,Pp,Pn)) ## consist scenario...
-      sumDiff_posUp_negUp=sum(c(Nn,Np,Pp,Pn)) ## consistent effect on positive tgs and inconsistent effect on negative tgs 
-      sumDiff_posDown_negDown=sum(c(-Nn,-Np,-Pp,-Pn)) ## inconsistent effect on positive tgs and consistent effect on negative tgs
-      sumDiff_posDown_negUp=sum(c(Nn,Np,-Pp,-Pn)) ## inconsist scenario...
-      
-      meanRatio=meanConsist-meanNotConsist
-    }
-    else if (isConsist==F) ## DEPRECATED - NOT USED
-    {
-      nConsist_pos=sum(L_pos_neg)
-      nConsist_neg=sum(L_neg_pos)
-      genes_consist_pos=names(diffExpr_pos)[L_pos_neg]
-      genes_consist_neg=names(diffExpr_neg)[L_neg_pos]
-      #sumNegDiff=sum(diffExpr_neg,na.rm=T)
-      #sumPosDiff=sum((-1*diffExpr_pos), na.rm=T)
-      sumDiff=sum(c(Nn,Np,-Pp,-Pn))
-      sumDiff_pos=sum(c(-Pp,-Pn))
-      sumDiff_neg=sum(c(Nn,Np))
-      meanRatio=meanNotConsist-meanConsist
-    }
-    fract_consist=(nConsist_pos+nConsist_neg)/nExprTargets
+     ## test if consistent differences are significantly higher than inconsistent and vice versa
+     diffMean=meanConsist-meanNotConsist
+  
+     ## fraction of consistent and inconsistent differences
+     fract_consist=(nConsist_pos+nConsist_neg)/nExprTargets
+     fract_inconsist=(nInconsist_pos+nInconsist_neg)/nExprTargets
     
-    meanEffect_posUp_negDown=sumDiff_posUp_negDown/nExprTargets
-    meanEffect_posUp_negUp=sumDiff_posUp_negUp/nExprTargets
-    meanEffect_posDown_negDown=sumDiff_posDown_negDown/nExprTargets
-    meanEffect_posDown_negUp=sumDiff_posDown_negUp/nExprTargets
-    
-    #meanEffectDiff_pos=sumDiff_pos/nExprTargets_pos
-    #meanEffectDiff_neg=sumDiff_neg/nExprTargets_neg
-  }
+     ## compute TF activity (ATF)
+     meanEffect_consist_inconsist=sumDiff_posUp_negDown/nExprTargets
+     meanEffect_mixed=sumDiff_posUp_negUp/nExprTargets
+    }
   else
   {
     nConsist_pos=NA
     nConsist_neg=NA
-    sumNegDiff=NA
-    sumPosDiff=NA
+    nInconsist_pos=NA
+    nInconsist_neg=NA
     fract_consist=NA
-    meanEffect_posUp_negDown=NA
-    meanEffect_posUp_negUp=NA
-    meanEffect_posDown_negDown=NA
-    meanEffect_posDown_negUp=NA
-    meanRatio=NA
+    fract_inconsist=NA
+    meanEffect_consist_inconsist=NA
+    meanEffect_mixed=NA
+    diffMean=NA
     genes_posT_pos=NA
     genes_negT_neg=NA
     genes_posT_neg=NA
@@ -190,101 +185,103 @@ getStatistics<-function(diffExpr_pos, diffExpr_neg, isConsist)
   }
   
   stat=list("nExprTargets"=nExprTargets,"nExprTargets_pos"=nExprTargets_pos, "nExprTargets_neg"=nExprTargets_neg,
-            "nConsist_pos"=nConsist_pos, "nConsist_neg"=nConsist_neg, 
-            "fract_consist"=fract_consist, 
-            "meanEffect_consist"=meanEffect_posUp_negDown, 
-            "meanEffect_posUp_negUp"=meanEffect_posUp_negUp,
-            "meanEffect_posDown_negDown"=meanEffect_posDown_negDown,
-            "meanEffect_inconsist"=meanEffect_posDown_negUp,
-            "meanRatio"=meanRatio,
+            "nConsist_pos"=nConsist_pos, "nConsist_neg"=nConsist_neg, "nInconsist_pos"=nInconsist_pos, "nInconsist_neg"=nInconsist_neg,
+            "fract_consist"=fract_consist, "fract_inconsist"=fract_inconsist,
+            "meanEffect_consist_inconsist"=meanEffect_consist_inconsist, "meanEffect_mixed"=meanEffect_mixed,
+            "diffMean"=diffMean,
             "genes_posT_pos"=genes_posT_pos, "genes_negT_neg"=genes_negT_neg,
             "genes_posT_neg"=genes_posT_neg, "genes_negT_pos"=genes_negT_pos)
   return(stat)
 }
 
-permuteTest_regEffect<-function(diffExpr, stat, nTargets_pos, nTargets_neg, nRand, isConsist)
+permuteTest_regEffect<-function(diffExpr, stat, nTargets_pos, nTargets_neg, nRand)
 {
   n_higher_fractConsist=0
-  n_higher_mean_consist=0
-  n_higher_mean_posUp_negUp=0
-  n_higher_mean_posDown_negDown=0
-  n_higher_mean_inconsist=0
-  n_higher_ratio=0
+  n_higher_fractInconsist=0
+  n_higher_consist_inconsist=0
+  n_lower_consist_inconsist=0
+  n_higher_mixed=0
+  n_lower_mixed=0
+  n_higher_diff=0
+  n_lower_diff=0
+  
   nTargets=nTargets_pos+nTargets_neg
-  
-  if (isConsist==T)
-     {
-      diffExprPositive=diffExpr[diffExpr>0]
-      diffExprNegative=diffExpr[diffExpr<0]
-     }
-  else
-     {
-      diffExprPositive=diffExpr[diffExpr<0]
-      diffExprNegative=diffExpr[diffExpr>0]
-     }
-  
-  print("nTargets pos/neg:")
-  print(nTargets_pos)
-  print(nTargets_neg)
+  diffExprPositive=diffExpr[diffExpr>0]
+  diffExprNegative=diffExpr[diffExpr<0]
   
   for (i in 1:nRand)
   {
-    ## get statistics on random sample 
+    ## get statistics on random sample #########################################
     diffExpr_pos_rand=sample(diffExpr, nTargets_pos, replace=TRUE)
     diffExpr_neg_rand=sample(diffExpr, nTargets_neg, replace=TRUE)
-    stat_rand=getStatistics(diffExpr_pos_rand, diffExpr_neg_rand, isConsist)
+    stat_rand=getStatistics(diffExpr_pos_rand, diffExpr_neg_rand)
     
-    ## more strict random model
+    ## more strict random model ################################################
     diffExpr_pos_rand2=c(sample(diffExprPositive, stat$nConsist_pos, replace=TRUE), sample(diffExprNegative, (nTargets_pos-stat$nConsist_pos), replace=TRUE))
     diffExpr_neg_rand2=c(sample(diffExprNegative, stat$nConsist_neg, replace=TRUE), sample(diffExprPositive, (nTargets_neg-stat$nConsist_neg), replace=TRUE))
-    stat_rand2=getStatistics(diffExpr_pos_rand2, diffExpr_neg_rand2, isConsist)
+    stat_rand2=getStatistics(diffExpr_pos_rand2, diffExpr_neg_rand2)
     
-    ## fract stat
+    ## fract stat ##
     if (stat_rand$fract_consist>=stat$fract_consist)
-    {
-      n_higher_fractConsist=n_higher_fractConsist+1
-    }
+       {
+        n_higher_fractConsist=n_higher_fractConsist+1
+       }
+    if (stat_rand$fract_inconsist>=stat$fract_inconsist)
+       {
+        n_higher_fractInconsist=n_higher_fractInconsist+1
+       }
     
-    ## mean stats
-    if (stat_rand$meanEffect_consist>=stat$meanEffect_consist)
-    {
-      n_higher_mean_consist=n_higher_mean_consist+1
-    }
-    if (stat_rand$meanEffect_posUp_negUp>=stat$meanEffect_posUp_negUp)
-    {
-      n_higher_mean_posUp_negUp=n_higher_mean_posUp_negUp+1
-    }
-    if (stat_rand$meanEffect_posDown_negDown>=stat$meanEffect_posDown_negDown)
-    {
-      n_higher_mean_posDown_negDown=n_higher_mean_posDown_negDown+1
-    }
-    if (stat_rand$meanEffect_inconsist>=stat$meanEffect_inconsist)
-    {
-      n_higher_mean_inconsist=n_higher_mean_inconsist+1
-    }
+    ## TF activity (ATF) stats ##
+    if (stat_rand$meanEffect_consist_inconsist>=stat$meanEffect_consist_inconsist)
+       {
+        n_higher_consist_inconsist=n_higher_consist_inconsist+1
+       }
+    if (stat_rand$meanEffect_consist_inconsist<=stat$meanEffect_consist_inconsist)
+       {
+        n_lower_consist_inconsist=n_lower_consist_inconsist+1
+       }
     
-    ## ratio stat
-    if (stat_rand2$meanRatio>=stat$meanRatio)
-    {
-      n_higher_ratio=n_higher_ratio+1
-    }
+    ## TF activity mixed stat ##
+    if (stat_rand$meanEffect_mixed>=stat$meanEffect_mixed)
+       {
+        n_higher_mixed=n_higher_mixed+1
+       }
+    if (stat_rand$meanEffect_mixed<=stat$meanEffect_mixed)
+       {
+        n_lower_mixed=n_lower_mixed+1
+       }
+    
+    ## diff means stat ##
+    if (stat_rand2$diffMean>=stat$diffMean)
+       {
+        n_higher_diff=n_higher_diff+1
+       }
+    if (stat_rand2$diffMean<=stat$diffMean)
+       {
+        n_lower_diff=n_lower_diff+1
+       }
   }
   
-  pval_fract=max(n_higher_fractConsist,1)/nRand
+  pval_fractConsist=max(n_higher_fractConsist,1)/nRand
+  pval_fractInconsist=max(n_higher_fractInconsist,1)/nRand
   
-  pval_mean_consist=max(n_higher_mean_consist,1)/nRand
-  pval_mean_posUp_negUp=max(n_higher_mean_posUp_negUp,1)/nRand
-  pval_mean_posDown_negDown=max(n_higher_mean_posDown_negDown,1)/nRand
-  pval_mean_inconsist=max(n_higher_mean_inconsist,1)/nRand
+  pval_consist_inconsist_higher=max(n_higher_consist_inconsist,1)/nRand
+  pval_consist_inconsist_lower=max(n_lower_consist_inconsist,1)/nRand
   
-  pval_meanRatio=max(n_higher_ratio,1)/nRand
+  pval_mixed_higher=max(n_higher_mixed,1)/nRand
+  pval_mixed_lower=max(n_lower_mixed,1)/nRand
   
-  return(list("pval_fract"=pval_fract, 
-              "pval_mean_consist"=pval_mean_consist, 
-              "pval_mean_posUp_negUp"=pval_mean_posUp_negUp, 
-              "pval_mean_posDown_negDown"=pval_mean_posDown_negDown, 
-              "pval_mean_inconsist"=pval_mean_inconsist,
-              "pval_meanRatio"=pval_meanRatio))
+  pval_diffMean_higher=max(n_higher_diff,1)/nRand
+  pval_diffMean_lower=max(n_lower_diff,1)/nRand
+
+  return(list("pval_fractConsist"=pval_fractConsist, 
+              "pval_fractInconsist"=pval_fractInconsist, 
+              "pval_consist_inconsist_higher"=pval_consist_inconsist_higher, 
+              "pval_consist_inconsist_lower"=pval_consist_inconsist_lower, 
+              "pval_mixed_higher"=pval_mixed_higher,
+              "pval_mixed_lower"=pval_mixed_lower,
+              "pval_diffMean_higher"=pval_diffMean_higher,
+              "pval_diffMean_lower"=pval_diffMean_lower))
 }
 
 computeStat_tfSample<-function(validationTable_regEffect, i, exprTable, L_tg_pos, L_tg_neg, nRand, isImputeMissing, isGlobal)
@@ -305,7 +302,7 @@ computeStat_tfSample<-function(validationTable_regEffect, i, exprTable, L_tg_pos
      }
   else
      {
-      ######## computation basen on FOLDCHANGE solely 
+      ######## computation based on FOLDCHANGE solely 
       diffExpr=exprTable$logFC
       names(diffExpr)=exprTable$gene
       diffExpr_pos=diffExpr[L_tg_pos]
@@ -315,7 +312,7 @@ computeStat_tfSample<-function(validationTable_regEffect, i, exprTable, L_tg_pos
   ## compute statistic #########################################################
   diffExpr_pos=diffExpr[L_tg_pos]
   diffExpr_neg=diffExpr[L_tg_neg]
-  stat=getStatistics(diffExpr_pos, diffExpr_neg, isConsist=T)
+  stat=getStatistics(diffExpr_pos, diffExpr_neg)
   
   if (stat$nExprTargets>0)
      {
@@ -326,28 +323,13 @@ computeStat_tfSample<-function(validationTable_regEffect, i, exprTable, L_tg_pos
     
       ## compute pvalues by permutation simulation
       ### ORIGINAL VERSION - COMPUTATIONALLY INTESIVE ####
-      pvals=permuteTest_regEffect(diffExpr, stat, n_pos, n_neg, nRand, isConsist=T)
+      pvals=permuteTest_regEffect(diffExpr, stat, n_pos, n_neg, nRand)
     
       ## fill results variable ###################################################
       tfName=validationTable_regEffect$hugo[i]
       validationTable_regEffect$tfDiffExpr[i]=diffExpr[tfName]
       validationTable_regEffect$nExprTargets_pos[i]=stat$nExprTargets_pos
       validationTable_regEffect$nExprTargets_neg[i]=stat$nExprTargets_neg
-      validationTable_regEffect$meanEffect_consist[i]=stat$meanEffect_consist
-      validationTable_regEffect$meanEffect_posUp_negUp[i]=stat$meanEffect_posUp_negUp
-      validationTable_regEffect$meanEffect_posDown_negDown[i]=stat$meanEffect_posDown_negDown
-      validationTable_regEffect$meanEffect_inconsist[i]=stat$meanEffect_inconsist
-      validationTable_regEffect$pval_fract[i]=pvals$pval_fract
-      validationTable_regEffect$pval_mean_consist[i]=pvals$pval_mean_consist
-      validationTable_regEffect$pval_mean_posUp_negUp[i]=pvals$pval_mean_posUp_negUp
-      validationTable_regEffect$pval_mean_posDown_negDown[i]=pvals$pval_mean_posDown_negDown
-      validationTable_regEffect$pval_mean_inconsist[i]=pvals$pval_mean_inconsist
-      validationTable_regEffect$pval_meanRatio[i]=pvals$pval_meanRatio
-      validationTable_regEffect$genes_posT_pos[i]=paste(stat$genes_posT_pos, collapse = ",")
-      validationTable_regEffect$genes_negT_neg[i]=paste(stat$genes_negT_neg, collapse = ",")
-      validationTable_regEffect$genes_posT_neg[i]=paste(stat$genes_posT_neg, collapse = ",")
-      validationTable_regEffect$genes_negT_pos[i]=paste(stat$genes_negT_pos, collapse = ",")
-    
       if (stat$nExprTargets_pos>0)
          {
           validationTable_regEffect$fract_posT_pos[i]=length(stat$genes_posT_pos)/stat$nExprTargets_pos
@@ -358,6 +340,23 @@ computeStat_tfSample<-function(validationTable_regEffect, i, exprTable, L_tg_pos
           validationTable_regEffect$fract_negT_neg[i]=length(stat$genes_negT_neg)/stat$nExprTargets_neg
           validationTable_regEffect$fract_negT_pos[i]=length(stat$genes_negT_pos)/stat$nExprTargets_neg
          }
+      validationTable_regEffect$genes_posT_pos[i]=paste(stat$genes_posT_pos, collapse = ",")
+      validationTable_regEffect$genes_negT_neg[i]=paste(stat$genes_negT_neg, collapse = ",")
+      validationTable_regEffect$genes_posT_neg[i]=paste(stat$genes_posT_neg, collapse = ",")
+      validationTable_regEffect$genes_negT_pos[i]=paste(stat$genes_negT_pos, collapse = ",")
+      
+      validationTable_regEffect$meanEffect_consist_inconsist[i]=stat$meanEffect_consist_inconsist
+      validationTable_regEffect$meanEffect_mixed[i]=stat$meanEffect_mixed
+      validationTable_regEffect$diffMean[i]=stat$diffMean
+      
+      validationTable_regEffect$pval_fractConsist[i]=pvals$pval_fractConsist
+      validationTable_regEffect$pval_fractInconsist[i]=pvals$pval_fractInconsist
+      validationTable_regEffect$pval_consist_inconsist_higher[i]=pvals$pval_consist_inconsist_higher
+      validationTable_regEffect$pval_consist_inconsist_lower[i]=pvals$pval_consist_inconsist_lower
+      validationTable_regEffect$pval_mixed_higher[i]=pvals$pval_mixed_higher
+      validationTable_regEffect$pval_mixed_lower[i]=pvals$pval_mixed_lower
+      validationTable_regEffect$pval_diffMean_higher[i]=pvals$pval_diffMean_higher
+      validationTable_regEffect$pval_diffMean_lower[i]=pvals$pval_diffMean_lower
   }
   
   return(validationTable_regEffect)
@@ -365,59 +364,6 @@ computeStat_tfSample<-function(validationTable_regEffect, i, exprTable, L_tg_pos
 
 predictActiveTFs<-function(grn, exprTable, nRand, isGlobal, nThreads)
 {
-  tfs_unique=unique(grn[,1])  
-  if (isGlobal==F)
-     {
-      ## generate TF-sample table
-      L_T=grepl("T", colnames(exprTable), fixed=T)
-      samples_T_unique=colnames(exprTable)[L_T]
-      tfSampleTable=getMutTable_genesOnly(tfs_unique, samples_T_unique)
-      geneNames=rownames(exprTable)
-     }
-  else
-     {
-      ## get unique TFs
-      tfSampleTable=as.data.frame(tfs_unique)
-      colnames(tfSampleTable)="hugo"
-      geneNames=exprTable$gene
-     }
-  
-  ## generate results variable #################################################
-  nRows=nrow(tfSampleTable)
-  evn=numeric(nRows)
-  evch=character(nRows)
-  validationTable_regEffect=data.frame("tfDiffExpr"=evn,"allelicFraction"=evn, "nTargets_pos"=evn, "nExprTargets_pos"=evn, "nTargets_neg"=evn, "nExprTargets_neg"=evn,
-                                       "fract_posT_pos"=evn, "fract_negT_neg"=evn, "fract_posT_neg"=evn, "fract_negT_pos"=evn, 
-                                       "meanEffect_consist"=evn, "meanEffect_posUp_negUp"=evn, "meanEffect_posDown_negDown"=evn,"meanEffect_inconsist"=evn,
-                                       "pval_fract"=evn, 
-                                       "pval_mean_consist"=evn, "pval_mean_posUp_negUp"=evn, "pval_mean_posDown_negDown"=evn, "pval_mean_inconsist"=evn, 
-                                       "pval_meanRatio"=evn,
-                                       "genes_posT_pos"=evch,"genes_negT_neg"=evch, "genes_posT_neg"=evch,"genes_negT_pos"=evch)
-  validationTable_regEffect=cbind(tfSampleTable, validationTable_regEffect) 
-  
-  ## precompute inputs #########################################################
-  nTfs=length(tfs_unique)
-  L_tg_pos=array(FALSE,c(nrow(exprTable),nTfs))
-  L_tg_neg=array(FALSE,c(nrow(exprTable),nTfs))
-  colnames(L_tg_pos)=tfs_unique
-  colnames(L_tg_neg)=tfs_unique
-  for (i in 1:nTfs)
-      {
-       tfName=validationTable_regEffect$hugo[i]
-       L_tg_grn_pos=grn[,1]==tfName & grn[,3]=="Activation"
-       L_tg_grn_neg=grn[,1]==tfName & grn[,3]=="Inhibition"
-       targetGenes_pos=grn[L_tg_grn_pos,2]
-       targetGenes_neg=grn[L_tg_grn_neg,2]
-       nTargets_pos=length(targetGenes_pos)
-       nTargets_neg=length(targetGenes_neg)
-       L=validationTable_regEffect$hugo==tfName
-       validationTable_regEffect$nTargets_pos[L]=nTargets_pos
-       validationTable_regEffect$nTargets_neg[L]=nTargets_neg
-       L_tg_pos[,i]=geneNames %in% targetGenes_pos
-       L_tg_neg[,i]=geneNames %in% targetGenes_neg
-      }
-  
-  
   computeStat<-function(indexes, validationTable_regEffect, exprTable, L_tg_pos, L_tg_neg, nRand)
   {
     ## get subset of validationTable
@@ -442,6 +388,61 @@ predictActiveTFs<-function(grn, exprTable, nRand, isGlobal, nThreads)
     return(validationTable_regEffect)
   }
   
+  tfs_unique=unique(grn[,1])  
+  if (isGlobal==F)
+     {
+      ## generate TF-sample table
+      L_T=grepl("T", colnames(exprTable), fixed=T)
+      samples_T_unique=colnames(exprTable)[L_T]
+      tfSampleTable=getMutTable_genesOnly(tfs_unique, samples_T_unique)
+      geneNames=rownames(exprTable)
+     }
+  else
+     {
+      ## get unique TFs
+      tfSampleTable=as.data.frame(tfs_unique)
+      colnames(tfSampleTable)="hugo"
+      geneNames=exprTable$gene
+     }
+  
+  ## generate results variable #################################################
+  nRows=nrow(tfSampleTable)
+  evn=numeric(nRows)
+  evch=character(nRows)
+  validationTable_regEffect=data.frame("tfDiffExpr"=evn,"allelicFraction"=evn, "nTargets_pos"=evn, "nExprTargets_pos"=evn, "nTargets_neg"=evn, "nExprTargets_neg"=evn,
+                                       "fract_posT_pos"=evn, "fract_negT_neg"=evn, "fract_posT_neg"=evn, "fract_negT_pos"=evn, 
+                                       "genes_posT_pos"=evch,"genes_negT_neg"=evch, "genes_posT_neg"=evch,"genes_negT_pos"=evch,
+                                       "meanEffect_consist_inconsist"=evn, "meanEffect_mixed"=evn, "diffMean"=evn,
+                                       "pval_fractConsist"=evn,"pval_fractInconsist"=evn,
+                                       "pval_consist_inconsist_higher"=evn,"pval_consist_inconsist_lower"=evn,
+                                       "pval_mixed_higher"=evn,"pval_mixed_lower"=evn,
+                                       "pval_diffMean_higher"=evn,"pval_diffMean_lower"=evn)
+                                       
+  validationTable_regEffect=cbind(tfSampleTable, validationTable_regEffect) 
+  
+  ## precompute output variable ###
+  nTfs=length(tfs_unique)
+  L_tg_pos=array(FALSE,c(nrow(exprTable),nTfs))
+  L_tg_neg=array(FALSE,c(nrow(exprTable),nTfs))
+  colnames(L_tg_pos)=tfs_unique
+  colnames(L_tg_neg)=tfs_unique
+  for (i in 1:nTfs)
+      {
+       tfName=validationTable_regEffect$hugo[i]
+       L_tg_grn_pos=grn[,1]==tfName & grn[,3]=="Activation"
+       L_tg_grn_neg=grn[,1]==tfName & grn[,3]=="Inhibition"
+       targetGenes_pos=grn[L_tg_grn_pos,2]
+       targetGenes_neg=grn[L_tg_grn_neg,2]
+       nTargets_pos=length(targetGenes_pos)
+       nTargets_neg=length(targetGenes_neg)
+       L=validationTable_regEffect$hugo==tfName
+       validationTable_regEffect$nTargets_pos[L]=nTargets_pos
+       validationTable_regEffect$nTargets_neg[L]=nTargets_neg
+       L_tg_pos[,i]=geneNames %in% targetGenes_pos
+       L_tg_neg[,i]=geneNames %in% targetGenes_neg
+      }
+  
+ 
   ## parallel computing ########################################################
   library(parallel)
   nCores=nThreads
